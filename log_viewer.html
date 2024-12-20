@@ -1,0 +1,246 @@
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log delle richieste</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+
+        h1 {
+            text-align: center;
+            color: #008b8b; /* Ciano */
+            background-color: #e0e0e0; /* Grigio chiaro */
+            padding: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px auto;
+            background-color: #ffffff; /* Bianco */
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #008b8b; /* Ciano */
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2; /* Alternanza di righe grigie */
+        }
+
+        tr:hover {
+            background-color: #ddd; /* Colore quando il mouse passa sopra una riga */
+        }
+
+        .filter-icon {
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            margin-left: 5px;
+            color: #333;
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .reset-icon, .sort-icon {
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            color: black;
+        }
+
+        .reset-icon {
+            color: red;
+        }
+        .logo-container {
+              position: absolute; /* Posizionamento assoluto */
+              top: 10px;          /* Distanza dal bordo superiore */
+              left: 10px;         /* Distanza dal bordo sinistro */
+              z-index: 1000;      /* Per sovrapporsi ad altri elementi */
+        }
+
+        .logo {
+              width: 140px;       /* Larghezza del logo */
+              height: auto;       /* Mantieni le proporzioni */
+        }
+    </style>
+</head>
+<body>
+
+<h1>Log delle richieste</h1>
+
+<div class="logo-container">
+    <img src="logo.png" alt="Logo WAF 33" class="logo">
+</div>
+
+<div class="button-container">
+    <button class="reset-icon" id="resetFilters">❌ Resetta filtri</button>
+    <button class="sort-icon" id="toggleSort">⏳ Inverti ordinamento</button>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Data e Ora</th>
+            <th>
+                IP
+                <button class="filter-icon" data-column="ip">🔄</button>
+            </th>
+            <th>
+                Method
+                <button class="filter-icon" data-column="method">🔄</button>
+            </th>
+            <th>
+                URL
+                <button class="filter-icon" data-column="url">🔄</button>
+            </th>
+            <th>
+                Minaccia rilevata
+                <button class="filter-icon" data-column="threat">🔄</button>
+            </th>
+            <th>
+                Status Code
+                <button class="filter-icon" data-column="statuscode">🔄</button>
+            </th>
+        </tr>
+    </thead>
+    <tbody id="logTable"></tbody>
+</table>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const tableBody = document.querySelector('#logTable'); // Corpo della tabella
+        const currentFilters = {
+            ip: null,
+            method: null,
+            url: null,
+            threat: null,
+            statuscode: null
+        };
+        let isAscending = true; // Stato dell'ordinamento
+
+        // Funzione per caricare i dati e popolare la tabella
+        function loadTable(data) {
+            tableBody.innerHTML = ''; // Svuota la tabella
+            const rows = data.trim().split('\n').map(row => row.split(';'));
+            
+            // Applica i filtri attivi
+            const filteredRows = rows.filter(columns => {
+                if (columns.length !== 6) return false;
+                const rowData = {
+                    ip: columns[1].split(':')[1]?.trim(),
+                    method: columns[2].split(':')[1]?.trim(),
+                    url: columns[3].split(':')[1]?.trim(),
+                    threat: columns[4].split(':')[1]?.trim() || 'No threat detected',
+                    statuscode: columns[5].split(':')[1]?.trim()
+                };
+
+                return Object.keys(currentFilters).every(key => {
+                    return !currentFilters[key] || rowData[key]?.includes(currentFilters[key]);
+                });
+            });
+
+            // Ordina le righe
+            const sortedRows = filteredRows.sort((a, b) => {
+                // Gestisce correttamente il formato della data
+                const dateA = new Date(a[0].trim());
+                const dateB = new Date(b[0].trim());
+                return isAscending ? dateA - dateB : dateB - dateA;
+            });
+
+            // Popola la tabella
+            sortedRows.forEach(columns => {
+                const tr = document.createElement('tr');
+
+                // Aggiungi la data e ora (colonna 1)
+                const dateTime = new Date(columns[0].trim());
+                const dateTimeCell = document.createElement('td');
+                dateTimeCell.textContent = dateTime.toLocaleString();  // Visualizza la data in formato leggibile
+                tr.appendChild(dateTimeCell);
+
+                // Aggiungi le altre colonne
+                columns.slice(1).forEach(column => {
+                    const td = document.createElement('td');
+                    td.textContent = column.split(':')[1]?.trim() || column.trim();
+                    tr.appendChild(td);
+                });
+
+                tableBody.appendChild(tr);
+            });
+        }
+
+        // Funzione per alternare i filtri per ogni colonna
+        function toggleColumnFilter(column) {
+            if (currentFilters[column] === null) {
+                currentFilters[column] = prompt(`Inserisci il valore da filtrare per "${column}" (lascia vuoto per mostrare tutti):`) || null;
+            } else {
+                currentFilters[column] = null; // Reset del filtro
+            }
+
+            fetch('log.txt')
+                .then(response => response.text())
+                .then(data => loadTable(data))
+                .catch(error => console.error('Errore durante la lettura del file log:', error));
+        }
+
+        // Funzione per resettare tutti i filtri
+        function resetAllFilters() {
+            Object.keys(currentFilters).forEach(key => {
+                currentFilters[key] = null;
+            });
+            fetch('log.txt')
+                .then(response => response.text())
+                .then(data => loadTable(data))
+                .catch(error => console.error('Errore durante la lettura del file log:', error));
+        }
+
+        // Funzione per alternare l'ordinamento
+        function toggleSortOrder() {
+            isAscending = !isAscending;
+            fetch('log.txt')
+                .then(response => response.text())
+                .then(data => loadTable(data))
+                .catch(error => console.error('Errore durante la lettura del file log:', error));
+        }
+
+        // Aggiungi gli eventi di click alle icone di filtro
+        document.querySelectorAll('.filter-icon').forEach(button => {
+            button.addEventListener('click', () => toggleColumnFilter(button.dataset.column));
+        });
+
+        // Aggiungi evento al bottone per resettare i filtri
+        document.getElementById('resetFilters').addEventListener('click', resetAllFilters);
+
+        // Aggiungi evento al bottone per invertire l'ordine
+        document.getElementById('toggleSort').addEventListener('click', toggleSortOrder);
+
+        // Carica il file log inizialmente
+        fetch('log.txt')
+            .then(response => response.text())
+            .then(data => loadTable(data))
+            .catch(error => console.error('Errore durante la lettura del file log:', error));
+    });
+</script>
+
+</body>
+</html>
